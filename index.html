@@ -120,6 +120,18 @@
       <button class="primary" onclick="onboard()">Create &amp; share</button>
     </div>
     <div id="onboardStatus" class="status"></div>
+
+    <h2 style="margin-top:26px;">Clients</h2>
+    <div id="adminClients"><div class="empty">Loading…</div></div>
+  </section>
+
+  <!-- Admin: selected client's files -->
+  <section id="viewAdminFiles" class="card hidden">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 id="adminFilesTitle" style="margin:0;">Files</h2>
+      <a id="adminFilesDrive" class="ghost" target="_blank" rel="noopener" style="text-decoration:none;">Open in Google Drive ↗</a>
+    </div>
+    <div id="adminFilesWrap" style="margin-top:12px;"><div class="empty">Loading…</div></div>
   </section>
 </main>
 
@@ -174,7 +186,10 @@ async function loadPortal() {
   const data = await api('list');
   if (!data.ok) { alert(data.error || 'Could not load portal.'); return; }
 
-  if (data.isAdmin) document.getElementById('viewAdmin').classList.remove('hidden');
+  if (data.isAdmin) {
+    document.getElementById('viewAdmin').classList.remove('hidden');
+    renderClients(data.clients || []);
+  }
 
   if (data.client) {
     document.getElementById('viewFiles').classList.remove('hidden');
@@ -191,8 +206,12 @@ async function loadPortal() {
 }
 
 function renderFiles(files) {
-  const wrap = document.getElementById('filesWrap');
-  if (!files || !files.length) { wrap.innerHTML = '<div class="empty">No files yet — upload your first one above.</div>'; return; }
+  renderFilesInto('filesWrap', files, 'No files yet — upload your first one above.');
+}
+
+function renderFilesInto(wrapId, files, emptyMsg) {
+  const wrap = document.getElementById(wrapId);
+  if (!files || !files.length) { wrap.innerHTML = '<div class="empty">' + (emptyMsg || 'No files yet.') + '</div>'; return; }
   let html = '<table><thead><tr><th>Name</th><th>Size</th><th>Updated</th><th></th></tr></thead><tbody>';
   files.forEach(function (f) {
     html += '<tr><td>' + escapeHtml(f.name) + '</td><td>' + fmtSize(f.size) +
@@ -233,6 +252,33 @@ async function handleFiles(fileList) {
   loadPortal(); // refresh the list
 }
 
+/* ---- admin: clients roster + per-client files ---- */
+function renderClients(clients) {
+  const wrap = document.getElementById('adminClients');
+  if (!clients.length) { wrap.innerHTML = '<div class="empty">No clients onboarded yet.</div>'; return; }
+  let html = '<table><thead><tr><th>Client</th><th>Email</th><th>Onboarded</th><th></th></tr></thead><tbody>';
+  clients.forEach(function (c) {
+    const created = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—';
+    html += '<tr><td>' + escapeHtml(c.name) + '</td><td>' + escapeHtml(c.email) +
+      '</td><td>' + created + '</td><td>' +
+      '<button class="ghost" onclick="viewClientFiles(\'' + c.folderId + '\',\'' +
+      escapeAttr(c.name) + '\',\'' + c.folderUrl + '\')">View files</button></td></tr>';
+  });
+  wrap.innerHTML = html + '</tbody></table>';
+}
+
+async function viewClientFiles(folderId, name, folderUrl) {
+  const sec = document.getElementById('viewAdminFiles');
+  sec.classList.remove('hidden');
+  document.getElementById('adminFilesTitle').textContent = name + ' — files';
+  document.getElementById('adminFilesDrive').href = folderUrl;
+  document.getElementById('adminFilesWrap').innerHTML = '<div class="empty">Loading…</div>';
+  sec.scrollIntoView({ behavior: 'smooth' });
+  const res = await api('adminFiles', { folderId: folderId });
+  if (!res.ok) { document.getElementById('adminFilesWrap').innerHTML = '<div class="empty">' + (res.error || 'Could not load.') + '</div>'; return; }
+  renderFilesInto('adminFilesWrap', res.files);
+}
+
 /* ---- admin onboarding ---- */
 async function onboard() {
   const name = document.getElementById('newName').value.trim();
@@ -246,6 +292,7 @@ async function onboard() {
   status.textContent = res.alreadyExisted ? 'That client already exists.' : 'Done! Folder created, shared, and welcome email sent.';
   document.getElementById('newName').value = '';
   document.getElementById('newEmail').value = '';
+  loadPortal(); // refresh the clients roster
 }
 
 /* ---- utilities ---- */
@@ -264,6 +311,7 @@ function fmtSize(b) {
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function (c) {
   return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
+function escapeAttr(s) { return String(s).replace(/['"\\]/g, '\\$&'); } // for inline onclick args
 </script>
 </body>
 </html>
