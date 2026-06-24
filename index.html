@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Client Portal</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root {
+    --brand: #2563eb;
+    --brand-dark: #1d4ed8;
+    --bg: #f5f7fb;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  header {
+    background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+  .brand .dot { width: 26px; height: 26px; border-radius: 7px; background: var(--brand); }
+  .who { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+  .who img { width: 32px; height: 32px; border-radius: 50%; }
+  main { max-width: 860px; margin: 0 auto; padding: 28px 20px 64px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 22px; margin-bottom: 20px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 14px; }
+  .muted { color: var(--muted); }
+  .center { text-align: center; }
+  .signin-wrap { padding: 56px 20px; }
+  button.primary {
+    background: var(--brand); color: #fff; border: 0; border-radius: 9px;
+    padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button.primary:hover { background: var(--brand-dark); }
+  button.ghost {
+    background: transparent; color: var(--brand); border: 1px solid var(--border);
+    border-radius: 9px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+  }
+  .drop {
+    border: 2px dashed var(--border); border-radius: 12px; padding: 26px; text-align: center;
+    color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .drop.hover { border-color: var(--brand); background: #eef3ff; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  td a { color: var(--brand); text-decoration: none; }
+  .row-input { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  input[type=text], input[type=email] {
+    flex: 1; min-width: 180px; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 9px; font-size: 14px;
+  }
+  .status { font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .status.err { color: #b91c1c; } .status.ok { color: #15803d; }
+  .empty { padding: 26px; text-align: center; color: var(--muted); }
+  .hidden { display: none; }
+  .pill { display:inline-block; font-size:11px; background:#eef3ff; color:var(--brand); padding:3px 9px; border-radius:999px; font-weight:600;}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span> Client Portal</div>
+  <div id="who" class="who hidden">
+    <img id="whoPic" alt="" />
+    <span id="whoName"></span>
+    <button class="ghost" onclick="signOut()">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <!-- Signed-out view -->
+  <section id="viewSignedOut" class="card center signin-wrap">
+    <h1>Welcome to your portal</h1>
+    <p class="muted">Sign in with the Google account we set up for you to view and upload your files.</p>
+    <div id="gbtn" style="display:inline-block; margin-top:18px;"></div>
+  </section>
+
+  <!-- Client files view -->
+  <section id="viewFiles" class="hidden">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <h1 id="clientTitle">Your files</h1>
+          <p class="muted" id="clientSub">Everything you've uploaded lives here.</p>
+        </div>
+        <a id="openDrive" class="ghost" target="_blank" rel="noopener" style="text-decoration:none;">Open in Google Drive ↗</a>
+      </div>
+      <div id="drop" class="drop" style="margin-top:16px;">
+        <strong>Drag &amp; drop files here</strong> or click to choose<br>
+        <span class="muted" style="font-size:12px;">Up to 25 MB each. For larger files, use “Open in Google Drive”.</span>
+        <input id="fileInput" type="file" multiple class="hidden" />
+      </div>
+      <div id="uploadStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Uploaded files</h2>
+      <div id="filesWrap"><div class="empty">Loading…</div></div>
+    </div>
+  </section>
+
+  <!-- Admin onboarding (only shown to admins) -->
+  <section id="viewAdmin" class="card hidden">
+    <h2>Onboard a new client <span class="pill">Admin</span></h2>
+    <p class="muted" style="margin-top:-6px;">Creates a Drive folder, shares it with their Google account, and emails them their portal link.</p>
+    <div class="row-input">
+      <input id="newName" type="text" placeholder="Client name (e.g. Acme Corp)" />
+      <input id="newEmail" type="email" placeholder="client@gmail.com" />
+      <button class="primary" onclick="onboard()">Create &amp; share</button>
+    </div>
+    <div id="onboardStatus" class="status"></div>
+  </section>
+</main>
+
+<script>
+/* ======================= CONFIG ======================= */
+const CONFIG = {
+  // The /exec URL from your Apps Script web-app deployment:
+  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzkz_SEIWPOp4K1Fzvp6yFAArwe-z1UkzgKtvNTthbKjnB_o3kUvSuhYB4DY-gph9ks/exec',
+  // The OAuth Web client ID (same value used in Code.gs):
+  GOOGLE_CLIENT_ID: '888873645500-o19tb4782kpcvaoqccmlfaejg7oh59op.apps.googleusercontent.com',
+};
+/* ===================================================== */
+
+let idToken = null;
+
+window.onload = function () {
+  google.accounts.id.initialize({
+    client_id: CONFIG.GOOGLE_CLIENT_ID,
+    callback: onCredential,
+  });
+  google.accounts.id.renderButton(document.getElementById('gbtn'), {
+    theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill',
+  });
+};
+
+function onCredential(response) {
+  idToken = response.credential;
+  const claims = parseJwt(idToken);
+  document.getElementById('whoPic').src = claims.picture || '';
+  document.getElementById('whoName').textContent = claims.name || claims.email;
+  document.getElementById('who').classList.remove('hidden');
+  document.getElementById('viewSignedOut').classList.add('hidden');
+  loadPortal();
+}
+
+function signOut() {
+  idToken = null;
+  google.accounts.id.disableAutoSelect();
+  location.reload();
+}
+
+async function api(action, extra) {
+  // No custom headers -> body is text/plain -> no CORS preflight (Apps Script friendly).
+  const res = await fetch(CONFIG.SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify(Object.assign({ action: action, idToken: idToken }, extra || {})),
+  });
+  return res.json();
+}
+
+async function loadPortal() {
+  const data = await api('list');
+  if (!data.ok) { alert(data.error || 'Could not load portal.'); return; }
+
+  if (data.isAdmin) document.getElementById('viewAdmin').classList.remove('hidden');
+
+  if (data.client) {
+    document.getElementById('viewFiles').classList.remove('hidden');
+    document.getElementById('clientTitle').textContent = data.client.name + ' — files';
+    document.getElementById('openDrive').href = data.client.folderUrl;
+    renderFiles(data.files);
+  } else if (!data.isAdmin) {
+    document.getElementById('viewFiles').classList.remove('hidden');
+    document.getElementById('filesWrap').innerHTML =
+      '<div class="empty">Your portal folder isn’t set up yet. Please contact us.</div>';
+    document.getElementById('drop').classList.add('hidden');
+    document.getElementById('openDrive').classList.add('hidden');
+  }
+}
+
+function renderFiles(files) {
+  const wrap = document.getElementById('filesWrap');
+  if (!files || !files.length) { wrap.innerHTML = '<div class="empty">No files yet — upload your first one above.</div>'; return; }
+  let html = '<table><thead><tr><th>Name</th><th>Size</th><th>Updated</th><th></th></tr></thead><tbody>';
+  files.forEach(function (f) {
+    html += '<tr><td>' + escapeHtml(f.name) + '</td><td>' + fmtSize(f.size) +
+      '</td><td>' + new Date(f.updated).toLocaleDateString() +
+      '</td><td><a href="' + f.url + '" target="_blank" rel="noopener">Open ↗</a></td></tr>';
+  });
+  wrap.innerHTML = html + '</tbody></table>';
+}
+
+/* ---- uploads ---- */
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+drop.addEventListener('click', function () { fileInput.click(); });
+drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('hover'); });
+drop.addEventListener('dragleave', function () { drop.classList.remove('hover'); });
+drop.addEventListener('drop', function (e) {
+  e.preventDefault(); drop.classList.remove('hover');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', function () { handleFiles(fileInput.files); });
+
+async function handleFiles(fileList) {
+  const status = document.getElementById('uploadStatus');
+  const files = Array.from(fileList);
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file.size > 25 * 1024 * 1024) {
+      status.className = 'status err';
+      status.textContent = '“' + file.name + '” is over 25 MB — please add it via “Open in Google Drive”.';
+      continue;
+    }
+    status.className = 'status'; status.textContent = 'Uploading ' + file.name + '…';
+    const data = await fileToBase64(file);
+    const res = await api('upload', { file: { name: file.name, mimeType: file.type, data: data } });
+    if (!res.ok) { status.className = 'status err'; status.textContent = res.error || 'Upload failed.'; return; }
+    status.className = 'status ok'; status.textContent = 'Uploaded ' + file.name + ' ✓';
+  }
+  loadPortal(); // refresh the list
+}
+
+/* ---- admin onboarding ---- */
+async function onboard() {
+  const name = document.getElementById('newName').value.trim();
+  const email = document.getElementById('newEmail').value.trim();
+  const status = document.getElementById('onboardStatus');
+  if (!name || !email) { status.className = 'status err'; status.textContent = 'Enter a name and email.'; return; }
+  status.className = 'status'; status.textContent = 'Creating folder & sharing…';
+  const res = await api('onboard', { name: name, email: email });
+  if (!res.ok) { status.className = 'status err'; status.textContent = res.error || 'Failed.'; return; }
+  status.className = 'status ok';
+  status.textContent = res.alreadyExisted ? 'That client already exists.' : 'Done! Folder created, shared, and welcome email sent.';
+  document.getElementById('newName').value = '';
+  document.getElementById('newEmail').value = '';
+}
+
+/* ---- utilities ---- */
+function fileToBase64(file) {
+  return new Promise(function (resolve, reject) {
+    const r = new FileReader();
+    r.onload = function () { resolve(String(r.result).split(',')[1]); };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+function parseJwt(t) { try { return JSON.parse(atob(t.split('.')[1])); } catch (e) { return {}; } }
+function fmtSize(b) {
+  if (!b) return '—'; const u = ['B','KB','MB','GB']; let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return b.toFixed(b < 10 && i > 0 ? 1 : 0) + ' ' + u[i];
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function (c) {
+  return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
+</script>
+</body>
+</html>
