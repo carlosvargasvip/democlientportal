@@ -199,21 +199,40 @@ function logoFallback(img) {
   document.getElementById('logoSquare').style.display = 'inline-block';
 }
 
+const TOKEN_KEY = 'portalIdToken';
+
 window.onload = function () {
   google.accounts.id.initialize({
     client_id: CONFIG.GOOGLE_CLIENT_ID,
     callback: onCredential,
-    use_fedcm_for_prompt: true, // Google's current sign-in flow; avoids legacy popup/postMessage
+    auto_select: true,            // silently re-sign-in returning users (no click)
+    use_fedcm_for_prompt: true,   // Google's current sign-in flow; avoids legacy popup/postMessage
     itp_support: true,
   });
   google.accounts.id.renderButton(document.getElementById('gbtn'), {
     theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill',
   });
+
+  // 1) If we have a still-valid token from a previous visit, restore instantly (no prompt).
+  const saved = localStorage.getItem(TOKEN_KEY);
+  if (saved && !isExpired(saved)) {
+    idToken = saved;
+    enterPortal(parseJwt(saved));
+    return;
+  }
+  localStorage.removeItem(TOKEN_KEY);
+  // 2) Otherwise ask Google to auto sign-in silently (One Tap); falls back to the button.
+  google.accounts.id.prompt();
 };
 
 function onCredential(response) {
   idToken = response.credential;
-  const claims = parseJwt(idToken);
+  try { localStorage.setItem(TOKEN_KEY, idToken); } catch (e) { /* storage disabled */ }
+  enterPortal(parseJwt(idToken));
+}
+
+// Shared "show the signed-in UI and load data" path (used by fresh login + token restore).
+function enterPortal(claims) {
   document.getElementById('whoPic').src = claims.picture || '';
   document.getElementById('whoName').textContent = claims.name || claims.email;
   document.getElementById('who').classList.remove('hidden');
@@ -222,13 +241,20 @@ function onCredential(response) {
   loadPortal();
 }
 
+function isExpired(token) {
+  const c = parseJwt(token);
+  if (!c.exp) return true;
+  return (c.exp * 1000) <= (Date.now() + 30000); // treat as expired 30s early, for safety
+}
+
 function loadingHtml(msg) {
   return '<div class="loading"><span class="spinner"></span> ' + (msg || 'Loading…') + '</div>';
 }
 
 function signOut() {
   idToken = null;
-  google.accounts.id.disableAutoSelect();
+  try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+  google.accounts.id.disableAutoSelect(); // don't auto sign-in again until next explicit login
   location.reload();
 }
 
@@ -248,7 +274,21 @@ async function api(action, extra) {
 async function loadPortal() {
   const data = await api('list');
   document.getElementById('viewLoading').classList.add('hidden'); // data arrived — hide spinner
-  if (!data.ok) { alert(data.error || 'Could not load portal.'); return; }
+  if (!data.ok) {
+    // Likely an expired/invalid saved token -> clear it and return to sign-in (try silent re-auth).
+    if (/sign-in|token|verified/i.test(data.error || '')) {
+      idToken = null;
+      try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+      document.getElementById('who').classList.add('hidden');
+      document.getElementById('viewFiles').classList.add('hidden');
+      document.getElementById('viewAdmin').classList.add('hidden');
+      document.getElementById('viewSignedOut').classList.remove('hidden');
+      google.accounts.id.prompt();
+      return;
+    }
+    alert(data.error || 'Could not load portal.');
+    return;
+  }
 
   if (data.isAdmin) {
     document.getElementById('viewAdmin').classList.remove('hidden');
