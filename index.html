@@ -65,6 +65,13 @@
   .status { font-size: 13px; margin-top: 10px; min-height: 18px; }
   .status.err { color: #b91c1c; } .status.ok { color: #15803d; }
   .empty { padding: 26px; text-align: center; color: var(--muted); }
+  .spinner {
+    width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--brand);
+    border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; vertical-align: middle;
+  }
+  .spinner.sm { width: 14px; height: 14px; border-width: 2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 34px; color: var(--muted); font-size: 14px; }
   .hidden { display: none; }
   .pill { display:inline-block; font-size:11px; background:#eef3ff; color:var(--brand); padding:3px 9px; border-radius:999px; font-weight:600;}
   .thumb {
@@ -103,6 +110,11 @@
     <div id="gbtn" style="display:inline-block; margin-top:18px;"></div>
   </section>
 
+  <!-- Shown while the portal loads after sign-in -->
+  <section id="viewLoading" class="card hidden">
+    <div class="loading"><span class="spinner"></span> Loading your portal…</div>
+  </section>
+
   <!-- Client files view -->
   <section id="viewFiles" class="hidden">
     <div class="card">
@@ -123,7 +135,7 @@
 
     <div class="card">
       <h2>Uploaded files</h2>
-      <div id="filesWrap"><div class="empty">Loading…</div></div>
+      <div id="filesWrap"><div class="loading"><span class="spinner"></span> Loading files…</div></div>
     </div>
   </section>
 
@@ -139,7 +151,7 @@
     <div id="onboardStatus" class="status"></div>
 
     <h2 style="margin-top:26px;">Clients</h2>
-    <div id="adminClients"><div class="empty">Loading…</div></div>
+    <div id="adminClients"><div class="loading"><span class="spinner"></span> Loading clients…</div></div>
   </section>
 
   <!-- Admin: selected client's files -->
@@ -148,7 +160,7 @@
       <h2 id="adminFilesTitle" style="margin:0;">Files</h2>
       <a id="adminFilesDrive" class="ghost" target="_blank" rel="noopener" style="text-decoration:none;">Open in Google Drive ↗</a>
     </div>
-    <div id="adminFilesWrap" style="margin-top:12px;"><div class="empty">Loading…</div></div>
+    <div id="adminFilesWrap" style="margin-top:12px;"><div class="loading"><span class="spinner"></span> Loading files…</div></div>
   </section>
 </main>
 
@@ -206,7 +218,12 @@ function onCredential(response) {
   document.getElementById('whoName').textContent = claims.name || claims.email;
   document.getElementById('who').classList.remove('hidden');
   document.getElementById('viewSignedOut').classList.add('hidden');
+  document.getElementById('viewLoading').classList.remove('hidden'); // show spinner during first load
   loadPortal();
+}
+
+function loadingHtml(msg) {
+  return '<div class="loading"><span class="spinner"></span> ' + (msg || 'Loading…') + '</div>';
 }
 
 function signOut() {
@@ -217,15 +234,20 @@ function signOut() {
 
 async function api(action, extra) {
   // No custom headers -> body is text/plain -> no CORS preflight (Apps Script friendly).
-  const res = await fetch(CONFIG.SCRIPT_URL, {
-    method: 'POST',
-    body: JSON.stringify(Object.assign({ action: action, idToken: idToken }, extra || {})),
-  });
-  return res.json();
+  try {
+    const res = await fetch(CONFIG.SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify(Object.assign({ action: action, idToken: idToken }, extra || {})),
+    });
+    return await res.json();
+  } catch (e) {
+    return { ok: false, error: 'Network error — please check your connection and try again.' };
+  }
 }
 
 async function loadPortal() {
   const data = await api('list');
+  document.getElementById('viewLoading').classList.add('hidden'); // data arrived — hide spinner
   if (!data.ok) { alert(data.error || 'Could not load portal.'); return; }
 
   if (data.isAdmin) {
@@ -315,7 +337,7 @@ async function handleFiles(fileList) {
       status.textContent = '“' + file.name + '” is over 25 MB — please add it via “Open in Google Drive”.';
       continue;
     }
-    status.className = 'status'; status.textContent = 'Uploading ' + file.name + '…';
+    status.className = 'status'; status.innerHTML = '<span class="spinner sm"></span> Uploading ' + escapeHtml(file.name) + '…';
     const data = await fileToBase64(file);
     const res = await api('upload', { file: { name: file.name, mimeType: file.type, data: data } });
     if (!res.ok) { status.className = 'status err'; status.textContent = res.error || 'Upload failed.'; return; }
@@ -344,7 +366,7 @@ async function viewClientFiles(folderId, name, folderUrl) {
   sec.classList.remove('hidden');
   document.getElementById('adminFilesTitle').textContent = name + ' — files';
   document.getElementById('adminFilesDrive').href = folderUrl;
-  document.getElementById('adminFilesWrap').innerHTML = '<div class="empty">Loading…</div>';
+  document.getElementById('adminFilesWrap').innerHTML = loadingHtml('Loading files…');
   sec.scrollIntoView({ behavior: 'smooth' });
   const res = await api('adminFiles', { folderId: folderId });
   if (!res.ok) { document.getElementById('adminFilesWrap').innerHTML = '<div class="empty">' + (res.error || 'Could not load.') + '</div>'; return; }
