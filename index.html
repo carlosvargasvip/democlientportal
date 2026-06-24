@@ -25,7 +25,8 @@
     padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
   }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
-  .brand .dot { width: 26px; height: 26px; border-radius: 7px; background: var(--brand); }
+  .brand .dot { width: 32px; height: 32px; border-radius: 7px; background: var(--brand); }
+  .brand .logo { width: 32px; height: 32px; border-radius: 7px; object-fit: cover; display: block; }
   .who { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
   .who img { width: 32px; height: 32px; border-radius: 50%; }
   main { max-width: 860px; margin: 0 auto; padding: 28px 20px 64px; }
@@ -82,7 +83,11 @@
 </head>
 <body>
 <header>
-  <div class="brand"><span class="dot"></span> Client Portal</div>
+  <div class="brand">
+    <img id="logoImg" class="logo" alt="Logo" src="logo.png" onerror="logoFallback(this)" />
+    <span id="logoSquare" class="dot" style="display:none;"></span>
+    Client Portal
+  </div>
   <div id="who" class="who hidden">
     <img id="whoPic" alt="" />
     <span id="whoName"></span>
@@ -173,10 +178,21 @@ const CONFIG = {
 
 let idToken = null;
 
+// Logo: try logo.png -> logo.jpg -> logo.jpeg, then fall back to the colored square.
+function logoFallback(img) {
+  const tries = ['logo.jpg', 'logo.jpeg'];
+  const i = Number(img.dataset.i || 0);
+  if (i < tries.length) { img.dataset.i = i + 1; img.src = tries[i]; return; }
+  img.style.display = 'none';
+  document.getElementById('logoSquare').style.display = 'inline-block';
+}
+
 window.onload = function () {
   google.accounts.id.initialize({
     client_id: CONFIG.GOOGLE_CLIENT_ID,
     callback: onCredential,
+    use_fedcm_for_prompt: true, // Google's current sign-in flow; avoids legacy popup/postMessage
+    itp_support: true,
   });
   google.accounts.id.renderButton(document.getElementById('gbtn'), {
     theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill',
