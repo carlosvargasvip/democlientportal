@@ -53,8 +53,17 @@
     color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s;
   }
   .drop.hover { border-color: var(--brand); background: #eef3ff; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+  .col-thumb { width: 56px; }
+  .col-name { word-break: break-word; }
+  .col-size { width: 80px; }
+  .col-date { width: 96px; }
+  .col-email { word-break: break-word; }
+  td.actions, th.actions { text-align: right; white-space: nowrap; width: 150px; }
+  .actions .ghost, .actions a { vertical-align: middle; }
+  .actions a { white-space: nowrap; margin-left: 8px; font-size: 13px; }
+  .sub-email { display: none; }
   th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
   td a { color: var(--brand); text-decoration: none; }
   .row-input { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -86,6 +95,21 @@
   .modal-head strong { font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .modal-head .actions { display:flex; gap:8px; flex:none; }
   #previewFrame { border:0; width:100%; flex:1; }
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 600px) {
+    header { padding: 12px 16px; }
+    main { padding: 18px 14px 48px; }
+    .card { padding: 16px; }
+    #whoName { display: none; }            /* save header room; avatar + Sign out remain */
+    th, td { padding: 9px 6px; font-size: 13px; }
+    .col-size, .col-date, .col-email { display: none; } /* hide secondary columns */
+    td.actions, th.actions { width: 128px; }
+    .sub-email { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; word-break: break-word; }
+    .modal { padding: 0; }
+    .modal-box { width: 100%; height: 100%; border-radius: 0; }
+    .drop { padding: 18px; }
+  }
 </style>
 </head>
 <body>
@@ -316,17 +340,17 @@ function renderFiles(files) {
 function renderFilesInto(wrapId, files, emptyMsg) {
   const wrap = document.getElementById(wrapId);
   if (!files || !files.length) { wrap.innerHTML = '<div class="empty">' + (emptyMsg || 'No files yet.') + '</div>'; return; }
-  let html = '<table><thead><tr><th></th><th>Name</th><th>Size</th><th>Updated</th><th></th></tr></thead><tbody>';
+  let html = '<table class="filetable"><thead><tr><th></th><th>Name</th><th class="col-size">Size</th><th class="col-date">Updated</th><th></th></tr></thead><tbody>';
   files.forEach(function (f) {
     const open = "openPreview('" + f.id + "','" + escapeAttr(f.name) + "')";
     const thumb = 'https://drive.google.com/thumbnail?id=' + f.id + '&sz=w80';
     html += '<tr>' +
-      '<td><img class="thumb" loading="lazy" alt="" src="' + thumb + '" onclick="' + open + '" ' +
+      '<td class="col-thumb"><img class="thumb" loading="lazy" alt="" src="' + thumb + '" onclick="' + open + '" ' +
         'onerror="this.replaceWith(fileIcon(\'' + escapeAttr(f.mime) + '\', \'' + f.id + '\', \'' + escapeAttr(f.name) + '\'))"></td>' +
-      '<td><a href="javascript:void(0)" onclick="' + open + '">' + escapeHtml(f.name) + '</a></td>' +
-      '<td>' + fmtSize(f.size) + '</td>' +
-      '<td>' + new Date(f.updated).toLocaleDateString() + '</td>' +
-      '<td><button class="ghost" onclick="' + open + '">Preview</button> ' +
+      '<td class="col-name"><a href="javascript:void(0)" onclick="' + open + '">' + escapeHtml(f.name) + '</a></td>' +
+      '<td class="col-size">' + fmtSize(f.size) + '</td>' +
+      '<td class="col-date">' + new Date(f.updated).toLocaleDateString() + '</td>' +
+      '<td class="actions"><button class="ghost" onclick="' + open + '">Preview</button>' +
         '<a href="' + f.url + '" target="_blank" rel="noopener">Open ↗</a></td>' +
     '</tr>';
   });
@@ -370,6 +394,7 @@ fileInput.addEventListener('change', function () { handleFiles(fileInput.files);
 async function handleFiles(fileList) {
   const status = document.getElementById('uploadStatus');
   const files = Array.from(fileList);
+  const uploaded = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     if (file.size > 25 * 1024 * 1024) {
@@ -381,8 +406,10 @@ async function handleFiles(fileList) {
     const data = await fileToBase64(file);
     const res = await api('upload', { file: { name: file.name, mimeType: file.type, data: data } });
     if (!res.ok) { status.className = 'status err'; status.textContent = res.error || 'Upload failed.'; return; }
+    uploaded.push({ name: file.name, size: file.size });
     status.className = 'status ok'; status.textContent = 'Uploaded ' + file.name + ' ✓';
   }
+  if (uploaded.length) api('notifyUpload', { files: uploaded }); // email the admin (fire-and-forget)
   loadPortal(); // refresh the list
 }
 
@@ -390,11 +417,11 @@ async function handleFiles(fileList) {
 function renderClients(clients) {
   const wrap = document.getElementById('adminClients');
   if (!clients.length) { wrap.innerHTML = '<div class="empty">No clients onboarded yet.</div>'; return; }
-  let html = '<table><thead><tr><th>Client</th><th>Email</th><th>Onboarded</th><th></th></tr></thead><tbody>';
+  let html = '<table class="clienttable"><thead><tr><th>Client</th><th class="col-email">Email</th><th class="col-date">Onboarded</th><th></th></tr></thead><tbody>';
   clients.forEach(function (c) {
     const created = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—';
-    html += '<tr><td>' + escapeHtml(c.name) + '</td><td>' + escapeHtml(c.email) +
-      '</td><td>' + created + '</td><td>' +
+    html += '<tr><td class="col-name">' + escapeHtml(c.name) + '<span class="sub-email">' + escapeHtml(c.email) + '</span></td><td class="col-email">' + escapeHtml(c.email) +
+      '</td><td class="col-date">' + created + '</td><td class="actions">' +
       '<button class="ghost" onclick="viewClientFiles(\'' + c.folderId + '\',\'' +
       escapeAttr(c.name) + '\',\'' + c.folderUrl + '\')">View files</button></td></tr>';
   });
